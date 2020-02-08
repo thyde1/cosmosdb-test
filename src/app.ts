@@ -86,8 +86,9 @@ const queryCount = async () => {
 }
 
 const queryNames = async () => {
-    const name = "Thomas";
-    await executeQuery("SELECT * FROM c WHERE c.givenName = @givenName", { "@givenName": name });
+    await executeQuery("SELECT * FROM c WHERE c.givenName = @givenName", { "@givenName": "Thomas" });
+    await executeQuery("SELECT * FROM c WHERE STARTSWITH(c.givenName, @givenName)", { "@givenName": "Thomas" });
+    await executeQuery("SELECT * FROM c WHERE c.familyName = @familyName", { "@familyName": "Hyde" });
     await executeQuery("SELECT * FROM c WHERE c.givenName = 'Will' AND c.familyName = 'Green'", {});
 }
 
@@ -111,9 +112,10 @@ const queryWords = async () => {
 }
 
 (async () => {
-    await clearContainer();
-    await createDb();
-    await populateDb();
+    console.log((await getContainer().read()).resource.indexingPolicy)
+    // await clearContainer();
+    // await createDb();
+    // await populateDb();
     await queryCount();
     await queryNames();
     await queryColors();
