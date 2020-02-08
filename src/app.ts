@@ -5,6 +5,16 @@ import Semaphore from "semaphore-async-await";
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED="0";
 
+const colors = ["red", "yellow", "pink", "green", "orange", "purple", "blue"] as const;
+type Color = typeof colors[number];
+
+type DBEntry = {
+    partitionKey: string;
+    givenName: string;
+    familyName: string;
+    favoriteColor: Color;
+}
+
 const clientOptions: CosmosClientOptions = {
     endpoint: "https://localhost:8081/",
     key: "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=="
@@ -21,14 +31,23 @@ const createDb = async () => {
     console.log("DB Created");
 }
 
+const getContainer = () => {
+    const database = client.database(databaseDefinition.id);
+    return database.container(collectionDefinition.id);
+}
+
 const populateDb = async () => {
     const numberToCreate = 100000;
-    const database = client.database(databaseDefinition.id);
-    const container = database.container(collectionDefinition.id);
+    const container = getContainer();
     const semaphore = new Semaphore(100);
     const promises = new Array(numberToCreate).fill(null).map(async (v, i) => {
         await semaphore.acquire();
-        await container.items.create({ partitionKey: uuid(), givenName: faker.name.firstName(), familyName: faker.name.lastName() });
+        await container.items.create<DBEntry>({
+            partitionKey: uuid(),
+            givenName: faker.name.firstName(),
+            familyName: faker.name.lastName(),
+            favoriteColor: faker.random.arrayElement(colors)
+        });
         semaphore.release();
         const count = i + 1;
         if (count % 100 === 0) {
@@ -39,7 +58,33 @@ const populateDb = async () => {
     console.log("DB Populated");
 }
 
+const executeQuery = async (query: string, params: {}) => {
+    const container = getContainer();
+    const iterator = container.items.query<DBEntry>({
+        query,
+        parameters: Object.keys(params).map(k => ({ name: k, value: params[k] }) )
+    });
+    const response = await iterator.fetchAll();
+    console.log(`Query: ${query}`);
+    console.log(`Returned: ${response.resources.length}`);
+    console.log(`Cost: ${response.requestCharge} RUs`);
+}
+
+const queryNames = async () => {
+    const name = "Thomas";
+    await executeQuery("SELECT * FROM c WHERE c.givenName = @givenName", { "@givenName": name });
+}
+
+const queryColors = async () => {
+    const color: Color = "yellow";
+    await executeQuery("SELECT * FROM c WHERE c.favoriteColor = @color", { "@color": color });
+    await executeQuery("SELECT c.givenName FROM c WHERE c.favoriteColor = @color", { "@color": color });
+    await executeQuery("SELECT TOP 10 * FROM c WHERE c.favoriteColor = @color", { "@color": color });
+}
+
 (async () => {
     await createDb();
     await populateDb();
+    await queryNames();
+    await queryColors();
 })();
