@@ -13,6 +13,7 @@ type DBEntry = {
     givenName: string;
     familyName: string;
     favoriteColor: Color;
+    favoriteWords: string[];
 }
 
 const clientOptions: CosmosClientOptions = {
@@ -36,6 +37,12 @@ const getContainer = () => {
     return database.container(collectionDefinition.id);
 }
 
+const clearContainer = async () => {
+    const container = getContainer();
+    await container.delete();
+    console.log("Container deleted");
+}
+
 const populateDb = async () => {
     const numberToCreate = 100000;
     const container = getContainer();
@@ -46,7 +53,8 @@ const populateDb = async () => {
             partitionKey: uuid(),
             givenName: faker.name.firstName(),
             familyName: faker.name.lastName(),
-            favoriteColor: faker.random.arrayElement(colors)
+            favoriteColor: faker.random.arrayElement(colors),
+            favoriteWords: new Array(100).fill(null).map(i => faker.random.word())
         });
         semaphore.release();
         const count = i + 1;
@@ -58,7 +66,7 @@ const populateDb = async () => {
     console.log("DB Populated");
 }
 
-const executeQuery = async (query: string, params: {}) => {
+const executeQuery = async (query: string, params: {}, logFirstResponse?: boolean) => {
     const container = getContainer();
     const iterator = container.items.query<DBEntry>({
         query,
@@ -68,23 +76,46 @@ const executeQuery = async (query: string, params: {}) => {
     console.log(`Query: ${query}`);
     console.log(`Returned: ${response.resources.length}`);
     console.log(`Cost: ${response.requestCharge} RUs`);
+    if (logFirstResponse) {
+        console.log(`Response: ${response.resources[0]}`);
+    }
+}
+
+const queryCount = async () => {
+    await executeQuery("SELECT VALUE COUNT(1) FROM c", {}, true);
 }
 
 const queryNames = async () => {
     const name = "Thomas";
     await executeQuery("SELECT * FROM c WHERE c.givenName = @givenName", { "@givenName": name });
+    await executeQuery("SELECT * FROM c WHERE c.givenName = 'Will' AND c.familyName = 'Green'", {});
 }
 
 const queryColors = async () => {
     const color: Color = "yellow";
     await executeQuery("SELECT * FROM c WHERE c.favoriteColor = @color", { "@color": color });
     await executeQuery("SELECT c.givenName FROM c WHERE c.favoriteColor = @color", { "@color": color });
+    await executeQuery("SELECT VALUE COUNT(1) FROM c WHERE c.favoriteColor = @color", { "@color": color }, true);
     await executeQuery("SELECT TOP 10 * FROM c WHERE c.favoriteColor = @color", { "@color": color });
+    await executeQuery("SELECT TOP 20 * FROM c WHERE c.favoriteColor = @color", { "@color": color });
+    await executeQuery("SELECT TOP 100 * FROM c WHERE c.favoriteColor = @color", { "@color": color });
+    await executeQuery("SELECT TOP 1000 * FROM c WHERE c.favoriteColor = @color", { "@color": color });
+}
+
+const queryWords = async () => {
+    const word = "Chips";
+    await executeQuery("SELECT VALUE COUNT(1) FROM c WHERE ARRAY_CONTAINS(c.favoriteWords, @word)", { "@word": word }, true);
+    await executeQuery("SELECT c.id FROM c WHERE ARRAY_CONTAINS(c.favoriteWords, @word)", { "@word": word });
+    await executeQuery("SELECT TOP 10 c.id FROM c WHERE ARRAY_CONTAINS(c.favoriteWords, @word)", { "@word": word });
+    await executeQuery("SELECT * FROM c WHERE ARRAY_CONTAINS(c.favoriteWords, 'Chips') AND ARRAY_CONTAINS(c.favoriteWords, 'Hat') AND ARRAY_CONTAINS(c.favoriteWords, 'Brunei Dollar')", {});
 }
 
 (async () => {
+    await clearContainer();
     await createDb();
     await populateDb();
+    await queryCount();
     await queryNames();
     await queryColors();
+    await queryWords();
 })();
