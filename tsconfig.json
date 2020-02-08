@@ -1,0 +1,10 @@
+{
+    "sourceMap": true,
+    "compilerOptions": {
+        "target": "ES5",
+        "module": "commonjs",
+        "allowJs": true,
+        "outDir": "./bin"
+    },
+    "include": ["./src/**/*"]
+}
